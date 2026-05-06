@@ -158,7 +158,7 @@ jobs:
         run: pwsh scripts/build-native.ps1 -Configuration Release
 
       - name: Run tests (arm64)
-        run: dotnet test Tests/Tests.Pagmo.NET/Tests.Pagmo.NET.csproj --logger "console;verbosity=minimal"
+        run: dotnet test Tests/Tests.Pagmo.NET/Tests.Pagmo.NET.csproj -p:PlatformTarget=AnyCPU --logger "console;verbosity=minimal"
 
       - name: Copy arm64 slice
         run: cp pagmoWrapper/build/libPagmoWrapper.dylib libPagmoWrapper-arm64.dylib
