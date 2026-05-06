@@ -113,8 +113,10 @@ jobs:
           name: native-linux
           path: pagmoWrapper/build/libPagmoWrapper.so
 
-  # ─── macOS arm64: build libPagmoWrapper.dylib (Apple Silicon) ─────────────
-  build-macos-arm64:
+  # ─── macOS universal: build arm64 natively, cross-compile x86_64, lipo ───────
+  # Runs entirely on macos-latest (Apple Silicon). Cross-compiling x86_64 on arm64
+  # is fully supported by the macOS SDK — no Intel runner needed.
+  build-macos:
     runs-on: macos-latest
 
     steps:
@@ -127,7 +129,6 @@ jobs:
         with:
           dotnet-version: '10.x'
 
-
       - name: Bootstrap vcpkg
         run: |
           git clone https://github.com/microsoft/vcpkg ~/vcpkg --depth 1
@@ -138,78 +139,40 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/vcpkg/installed
-          key: vcpkg-macos-arm64-${{ hashFiles('ports/**', 'triplets/**') }}
-          restore-keys: vcpkg-macos-arm64-
+          key: vcpkg-macos-${{ hashFiles('ports/**', 'triplets/**') }}
+          restore-keys: vcpkg-macos-
 
-      - name: Build native library
+      - name: Build arm64 slice (native)
         run: pwsh scripts/build-native.ps1 -Configuration Release
 
-      - name: Upload macOS arm64 native
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-macos-arm64
-          path: pagmoWrapper/build/libPagmoWrapper.dylib
+      - name: Copy arm64 slice
+        run: cp pagmoWrapper/build/libPagmoWrapper.dylib libPagmoWrapper-arm64.dylib
 
-  # ─── macOS x64: build libPagmoWrapper.dylib (Intel) ──────────────────────
-  build-macos-x64:
-    runs-on: macos-13
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install build tools
-        run: brew install autoconf autoconf-archive automake libtool swig
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.x'
-
-
-      - name: Bootstrap vcpkg
+      - name: Install x86_64 vcpkg packages
         run: |
-          git clone https://github.com/microsoft/vcpkg ~/vcpkg --depth 1
-          ~/vcpkg/bootstrap-vcpkg.sh -disableMetrics
-          echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
+          $HOME/vcpkg/vcpkg install "pagmo2[nlopt]:x64-osx-static-pic" \
+            "--overlay-triplets=triplets/" \
+            "--overlay-ports=ports/" \
+            "--recurse"
 
-      - name: Cache vcpkg installed
-        uses: actions/cache@v4
-        with:
-          path: ~/vcpkg/installed
-          key: vcpkg-macos-x64-${{ hashFiles('ports/**', 'triplets/**') }}
-          restore-keys: vcpkg-macos-x64-
-
-      - name: Build native library
-        run: pwsh scripts/build-native.ps1 -Configuration Release
-
-      - name: Upload macOS x64 native
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-macos-x64
-          path: pagmoWrapper/build/libPagmoWrapper.dylib
-
-  # ─── macOS universal: lipo arm64 + x64 into a universal binary ────────────
-  merge-macos:
-    needs: [build-macos-arm64, build-macos-x64]
-    runs-on: macos-latest
-
-    steps:
-      - name: Download arm64 slice
-        uses: actions/download-artifact@v4
-        with:
-          name: native-macos-arm64
-          path: macos-arm64/
-
-      - name: Download x64 slice
-        uses: actions/download-artifact@v4
-        with:
-          name: native-macos-x64
-          path: macos-x64/
+      - name: Build x86_64 slice (cross-compile)
+        run: |
+          cmake \
+            -B pagmoWrapper/build-x64 \
+            -S pagmoWrapper \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$HOME/vcpkg/scripts/buildsystems/vcpkg.cmake \
+            -DVCPKG_TARGET_TRIPLET=x64-osx-static-pic \
+            -DVCPKG_OVERLAY_TRIPLETS=triplets/ \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DPAGMONET_WITH_NLOPT=ON
+          cmake --build pagmoWrapper/build-x64 --config Release
 
       - name: Create universal binary
         run: |
           lipo -create \
-            macos-arm64/libPagmoWrapper.dylib \
-            macos-x64/libPagmoWrapper.dylib \
+            libPagmoWrapper-arm64.dylib \
+            pagmoWrapper/build-x64/libPagmoWrapper.dylib \
             -output libPagmoWrapper.dylib
           codesign --sign - libPagmoWrapper.dylib
           lipo -info libPagmoWrapper.dylib
@@ -222,7 +185,7 @@ jobs:
 
   # ─── Release: merge natives, create GitHub release, push to NuGet ─────────
   release:
-    needs: [build-windows, build-linux, merge-macos]
+    needs: [build-windows, build-linux, build-macos]
     runs-on: ubuntu-latest
 
     steps:
