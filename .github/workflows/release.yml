@@ -1,0 +1,192 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 1.0.0-beta.3) — overrides tag when run manually'
+        required: false
+
+jobs:
+
+  # ─── Windows: build native DLL + pack NuGet (Windows runtime only) ────────
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Bootstrap vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg C:/vcpkg --depth 1
+          C:/vcpkg/bootstrap-vcpkg.bat -disableMetrics
+          echo "VCPKG_ROOT=C:/vcpkg" >> $env:GITHUB_ENV
+        shell: pwsh
+
+      - name: Cache vcpkg installed
+        uses: actions/cache@v4
+        with:
+          path: C:/vcpkg/installed
+          key: vcpkg-windows-${{ hashFiles('ports/**', 'triplets/**') }}
+          restore-keys: vcpkg-windows-
+
+      - name: Resolve version
+        id: ver
+        run: |
+          $tag = $env:GITHUB_REF_NAME -replace '^v', ''
+          $manual = '${{ github.event.inputs.version }}'
+          $v = if ($manual) { $manual } else { $tag }
+          echo "VERSION=$v" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Build release artifacts
+        run: |
+          pwsh scripts/build-release-artifacts.ps1 `
+            -Version ${{ steps.ver.outputs.VERSION }} `
+            -Configuration Release `
+            -SkipReleaseGates
+        shell: pwsh
+
+      - name: Upload nupkg
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-windows
+          path: artifacts/release/${{ steps.ver.outputs.VERSION }}/nuget/
+
+      - name: Upload Windows native bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-windows
+          path: artifacts/release/${{ steps.ver.outputs.VERSION }}/native/win-x64/
+
+  # ─── Linux: build libPagmoWrapper.so ──────────────────────────────────────
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential swig curl zip unzip tar
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Install PowerShell
+        run: |
+          source /etc/os-release
+          wget -q "https://packages.microsoft.com/config/ubuntu/${VERSION_ID}/packages-microsoft-prod.deb" -O ms-prod.deb
+          sudo dpkg -i ms-prod.deb
+          sudo apt-get update
+          sudo apt-get install -y powershell
+
+      - name: Bootstrap vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg ~/vcpkg --depth 1
+          ~/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
+
+      - name: Cache vcpkg installed
+        uses: actions/cache@v4
+        with:
+          path: ~/vcpkg/installed
+          key: vcpkg-linux-${{ hashFiles('ports/**', 'triplets/**') }}
+          restore-keys: vcpkg-linux-
+
+      - name: Build native library
+        run: pwsh scripts/build-native.ps1 -Configuration Release
+
+      - name: Upload Linux native
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-linux
+          path: pagmoWrapper/build/libPagmoWrapper.so
+
+  # ─── Release: merge natives, create GitHub release, push to NuGet ─────────
+  release:
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Install PowerShell
+        run: |
+          source /etc/os-release
+          wget -q "https://packages.microsoft.com/config/ubuntu/${VERSION_ID}/packages-microsoft-prod.deb" -O ms-prod.deb
+          sudo dpkg -i ms-prod.deb
+          sudo apt-get update
+          sudo apt-get install -y powershell
+
+      - name: Resolve version
+        id: ver
+        run: |
+          $tag = $env:GITHUB_REF_NAME -replace '^v', ''
+          $manual = '${{ github.event.inputs.version }}'
+          $v = if ($manual) { $manual } else { $tag }
+          echo "VERSION=$v" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Download Windows nupkg
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-windows
+          path: nuget/
+
+      - name: Download Linux native
+        uses: actions/download-artifact@v4
+        with:
+          name: native-linux
+          path: native-linux/
+
+      - name: Inject Linux .so into nupkg
+        run: |
+          Add-Type -AssemblyName "System.IO.Compression"
+          Add-Type -AssemblyName "System.IO.Compression.FileSystem"
+          $nupkg = "nuget/Pagmo.NET.${{ steps.ver.outputs.VERSION }}.nupkg"
+          $so    = "native-linux/libPagmoWrapper.so"
+          $zip = [System.IO.Compression.ZipFile]::Open($nupkg, [System.IO.Compression.ZipArchiveMode]::Update)
+          try {
+            $existing = $zip.GetEntry("runtimes/linux-x64/native/libPagmoWrapper.so")
+            if ($existing) { $existing.Delete() }
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+              $zip, $so, "runtimes/linux-x64/native/libPagmoWrapper.so",
+              [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+            Write-Host "Injected libPagmoWrapper.so"
+          } finally {
+            $zip.Dispose()
+          }
+        shell: pwsh
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            "nuget/Pagmo.NET.${{ steps.ver.outputs.VERSION }}.nupkg" \
+            "nuget/Pagmo.NET.${{ steps.ver.outputs.VERSION }}.snupkg" \
+            --title "Pagmo.NET ${{ github.ref_name }}" \
+            --notes-file RELEASE_NOTES.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push to NuGet.org
+        run: |
+          dotnet nuget push "nuget/Pagmo.NET.${{ steps.ver.outputs.VERSION }}.nupkg" \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json
+          dotnet nuget push "nuget/Pagmo.NET.${{ steps.ver.outputs.VERSION }}.snupkg" \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json
