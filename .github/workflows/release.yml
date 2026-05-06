@@ -58,7 +58,9 @@ jobs:
         shell: pwsh
 
       - name: Run tests
-        run: dotnet test Tests/Tests.Pagmo.NET/Tests.Pagmo.NET.csproj -p:Platform=x64 --logger "console;verbosity=minimal"
+        run: |
+          $env:PATH = "$(Resolve-Path pagmoWrapper\win-build);$env:PATH"
+          dotnet test Tests/Tests.Pagmo.NET/Tests.Pagmo.NET.csproj -p:Platform=x64 --logger "console;verbosity=minimal"
         shell: pwsh
 
       - name: Upload nupkg
@@ -156,7 +158,7 @@ jobs:
         run: pwsh scripts/build-native.ps1 -Configuration Release
 
       - name: Run tests (arm64)
-        run: dotnet test Tests/Tests.Pagmo.NET/Tests.Pagmo.NET.csproj -p:Platform=x64 --logger "console;verbosity=minimal"
+        run: dotnet test Tests/Tests.Pagmo.NET/Tests.Pagmo.NET.csproj --logger "console;verbosity=minimal"
 
       - name: Copy arm64 slice
         run: cp pagmoWrapper/build/libPagmoWrapper.dylib libPagmoWrapper-arm64.dylib
