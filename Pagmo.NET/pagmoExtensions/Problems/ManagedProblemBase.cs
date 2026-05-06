@@ -5,7 +5,7 @@ namespace pagmo
     /// <summary>
     /// Base class for managed C# problems.
     /// </summary>
-    public abstract partial class ManagedProblemBase : IProblem
+    public abstract partial class ManagedProblemBase : IProblem, IThreadCloneableProblem
     {
         /// <summary>
         /// Evaluates the fitness vector at the given decision vector.
@@ -56,6 +56,14 @@ namespace pagmo
         /// Returns thread-safety capability for threaded execution paths.
         /// </summary>
         public virtual ThreadSafety get_thread_safety() => ThreadSafety.None;
+
+        /// <summary>
+        /// Returns a fully independent copy of this problem for per-thread or per-island use.
+        /// Override to opt in to cloning-based parallel execution for problems that declare
+        /// <see cref="ThreadSafety.None"/>. Return <c>null</c> (default) to keep the
+        /// existing thread-safety guard behaviour.
+        /// </summary>
+        public virtual IProblem Clone() => null;
 
         /// <summary>
         /// Evaluates flattened batch inputs when supported.

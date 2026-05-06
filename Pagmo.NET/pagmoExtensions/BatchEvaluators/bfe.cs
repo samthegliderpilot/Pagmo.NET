@@ -60,6 +60,21 @@ namespace pagmo
                 throw new ArgumentNullException(nameof(batchX));
             }
 
+            if (requiresParallelSafety
+                && problem.get_thread_safety() == ThreadSafety.None
+                && problem is IThreadCloneableProblem cloneable)
+            {
+                // Probe: if Clone() returns null the problem doesn't support cloning, so
+                // fall through to the standard thread-safety rejection with its error message.
+                var probe = cloneable.Clone();
+                probe?.Dispose();
+                if (probe != null)
+                {
+                    using var managedBfe = new managed_thread_bfe();
+                    return managedBfe.Operator(cloneable, batchX);
+                }
+            }
+
             if (requiresParallelSafety)
             {
                 problem.ThrowIfNotThreadSafe();

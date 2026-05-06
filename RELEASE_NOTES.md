@@ -1,5 +1,48 @@
 # Release Notes
 
+## v1.0.0-beta.2
+
+### Highlights
+
+**Per-thread problem cloning (`IThreadCloneableProblem`)**
+
+Managed problems that declare `ThreadSafety.None` can now participate in threaded
+execution paths (`archipelago.push_back_island`, `thread_bfe`) by implementing
+`IThreadCloneableProblem` and overriding `Clone()` on `ManagedProblemBase`:
+
+```csharp
+public override ThreadSafety get_thread_safety() => ThreadSafety.None;
+
+public override IProblem Clone() => new MyProblem(); // fresh independent copy
+```
+
+Each island receives its own exclusive clone; `thread_bfe` creates one clone per OS
+thread via `managed_thread_bfe`. Problems that return `null` from `Clone()` (the default)
+continue to be rejected on threaded paths as before — the feature is fully opt-in.
+
+**IPOPT included in Windows build**
+
+The Windows NuGet package now includes IPOPT statically linked (via a vcpkg overlay port
+that fixes LAPACK detection under the `x64-windows-static-md` triplet, with Intel MKL as
+the BLAS/LAPACK backend to avoid the OpenBLAS `DllMain` conflict).
+`OptionalSolverAvailability.IsIpoptAvailable` returns `true` out of the box on both
+Windows and Linux.
+
+**NuGet package improvements**
+
+- Consumer-focused readme on NuGet.org (installation, quickstart, feature table).
+- Package logo.
+- `--verbose` flag added to the examples runner — prints algorithm logs after each scenario.
+
+### Breaking / Behavior Notes
+
+No breaking changes from beta.1.
+
+`ManagedProblemBase` now implements `IThreadCloneableProblem` with `virtual Clone() => null`.
+Subclasses that previously had no `Clone()` method are unaffected.
+
+---
+
 ## v1.0.0-beta.1
 
 ### Overview
@@ -65,9 +108,7 @@ Notable type renames from internal pre-release names:
 
 ### Known Limitations
 
-- **Thread-clone strategy** - Managed problems reporting `ThreadSafety.None` are rejected on
-  threaded execution paths (`thread_bfe`, `archipelago` with managed UDPs). A per-thread clone
-  strategy (`IThreadCloneableProblem`) is being evaluated for a later release.
+- **Thread-clone strategy** - Resolved in beta.2 via `IThreadCloneableProblem`.
 
 ### Supported Environment Matrix
 

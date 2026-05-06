@@ -38,6 +38,9 @@ internal static class Program
             case "maneuver":
                 RunOrbitalManeuverOptimization(verbose);
                 break;
+            case "cloning":
+                RunCloneableProblemsScenario(verbose);
+                break;
             case "all":
                 RunSingleIslandBaseline(verbose);
                 Console.WriteLine();
@@ -45,11 +48,13 @@ internal static class Program
                 Console.WriteLine();
                 RunPolicyComparison(verbose);
                 Console.WriteLine();
+                RunCloneableProblemsScenario(verbose);
+                Console.WriteLine();
                 RunOrbitalManeuverOptimization(verbose);
                 break;
             default:
                 Console.WriteLine($"Unknown scenario '{scenario}'.");
-                Console.WriteLine("Use one of: single, archipelago, policies, maneuver, all");
+                Console.WriteLine("Use one of: single, archipelago, policies, maneuver, cloning, all");
                 Console.WriteLine("Add --verbose (or -v) to print algorithm logs after each scenario.");
                 break;
         }
@@ -319,7 +324,83 @@ internal static class Program
         Console.WriteLine($"    explicit policy: {result.UsedExplicitPolicies}");
     }
 
+    // Demonstrates IThreadCloneableProblem: a non-thread-safe problem with internal mutable
+    // state that participates in archipelago parallel search by providing Clone().
+    private static void RunCloneableProblemsScenario(bool verbose)
+    {
+        Console.WriteLine("Scenario: cloneable non-thread-safe problem in archipelago");
+        Console.WriteLine("  CloneableRastriginProblem declares ThreadSafety.None but implements Clone().");
+        Console.WriteLine("  Each island receives its own exclusive copy — no concurrency required.");
+
+        using var problem = new CloneableRastriginProblem();
+        using var archi = new archipelago();
+
+        for (var i = 0; i < DefaultIslandCount; i++)
+        {
+            using IAlgorithm algo = new de(60u, 0.8, 0.9, 2u, 1e-6, 1e-6, (uint)(301 + i));
+            archi.push_back_island(algo, problem, DefaultPopulationSize, seed: (uint)(401 + i));
+        }
+
+        Console.WriteLine($"  Clones created for {DefaultIslandCount} islands: {CloneableRastriginProblem.CloneCount}");
+
+        archi.evolve(15u);
+        archi.wait_check();
+
+        var best = GetArchipelagoBestFitness(archi, DefaultIslandCount);
+        Console.WriteLine($"  Best fitness: {best:F6}");
+        Console.WriteLine($"  Total fitness evaluations across all clones: {CloneableRastriginProblem.TotalEvaluations}");
+
+        if (verbose)
+        {
+            for (var i = 0; i < DefaultIslandCount; i++)
+            {
+                using var isl = archi.GetIslandCopy((ulong)i);
+                using var algo = isl.get_algorithm();
+                PrintAlgorithmLog($"island {i}", algo.GetLogLines());
+            }
+        }
+    }
+
     private sealed record ExperimentResult(string TopologyName, double BestFitness, int MigrationEvents, bool UsedExplicitPolicies);
+}
+
+internal sealed class CloneableRastriginProblem : ManagedProblemBase
+{
+    public static int CloneCount;
+    public static long TotalEvaluations;
+
+    // Per-instance mutable state — safe because each island owns an exclusive clone.
+    private int _instanceEvaluations;
+
+    public override PairOfDoubleVectors get_bounds() => Bounds(new[] { -5.12, -5.12 }, new[] { 5.12, 5.12 });
+
+    public override DoubleVector fitness(DoubleVector x)
+    {
+        _instanceEvaluations++;
+        Interlocked.Increment(ref TotalEvaluations);
+
+        const double a = 10.0;
+        var f = a * 2
+                + (x[0] * x[0] - a * Math.Cos(2.0 * Math.PI * x[0]))
+                + (x[1] * x[1] - a * Math.Cos(2.0 * Math.PI * x[1]));
+        return Vec(f);
+    }
+
+    public override string get_name() => "CloneableRastriginProblem";
+
+    // Exposes per-clone eval count — each clone has its own independent counter,
+    // which would be corrupted if two threads shared the same instance.
+    public override string get_extra_info() => $"instance evaluations: {_instanceEvaluations}";
+
+    // Not safe for concurrent access — _instanceEvaluations is not interlocked.
+    public override ThreadSafety get_thread_safety() => ThreadSafety.None;
+
+    // Each island gets a fresh instance with its own independent state.
+    public override IProblem Clone()
+    {
+        Interlocked.Increment(ref CloneCount);
+        return new CloneableRastriginProblem();
+    }
 }
 
 internal sealed class RastriginLikeProblem : ManagedProblemBase

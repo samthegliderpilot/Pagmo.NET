@@ -123,9 +123,14 @@ public override DoubleVector fitness(DoubleVector x) { ... }
 public override PairOfDoubleVectors get_bounds() { ... }
 ```
 
-**Threading:** `thread_bfe` and `archipelago` with managed UDPs require
-`ThreadSafety.Basic` or `ThreadSafety.Constant`. UDPs declaring `ThreadSafety.None`
-are rejected on threaded entrypoints.
+**Threading — thread-safe problems:** declare `ThreadSafety.Basic` or `ThreadSafety.Constant`
+and the instance is shared directly across threads.
+
+**Threading — cloneable non-thread-safe problems:** implement `IThreadCloneableProblem` and
+override `Clone()` on `ManagedProblemBase`. The system creates one exclusive clone per island
+(`archipelago`) or per OS thread (`thread_bfe`). The clone reports `ThreadSafety.Basic`
+transparently so pagmo's native `thread_island` check passes. Problems returning `null` from
+`Clone()` (the default) are still rejected on threaded entrypoints.
 
 ---
 

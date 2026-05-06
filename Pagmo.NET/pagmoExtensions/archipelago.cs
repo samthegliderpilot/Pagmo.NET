@@ -8,11 +8,68 @@ namespace pagmo
     /// </summary>
     public partial class archipelago
     {
-        private static ulong WithManagedProblem(IProblem problem, Func<problem, ulong> action)
+        // Keeps clones alive for the lifetime of this archipelago so their
+        // ProblemCallbackAdapter GCHandles (keyed on the clone in NativeInterop)
+        // remain reachable while the island's native callback is in use.
+        private readonly List<IProblem> _managedProblemCloneRoots = new();
+
+        private ulong WithManagedProblem(IProblem problem, Func<problem, ulong> action)
         {
+            if (problem == null) throw new ArgumentNullException(nameof(problem));
+
+            if (problem.get_thread_safety() == ThreadSafety.None
+                && problem is IThreadCloneableProblem cloneable)
+            {
+                var clone = cloneable.Clone();
+                if (clone != null)
+                {
+                    if (ReferenceEquals(clone, problem))
+                        throw new InvalidOperationException(
+                            $"'{problem.get_name()}.Clone()' returned the same instance. Clone() must return an independent copy.");
+                    // Wrap the clone so it reports ThreadSafety.Basic — the clone is exclusively
+                    // owned by this island so single-threaded access is guaranteed, satisfying
+                    // thread_island's native thread-safety check.
+                    var adapter = new ExclusiveCloneAdapter(clone);
+                    _managedProblemCloneRoots.Add(adapter);
+                    using var wrappedClone = new problem(adapter);
+                    return action(wrappedClone);
+                }
+            }
+
             problem.ThrowIfNotThreadSafe();
             using var wrappedProblem = new problem(problem);
             return action(wrappedProblem);
+        }
+
+        // Wraps a clone and re-declares thread safety as Basic since the clone is
+        // exclusively owned by one island and will only be accessed from one thread.
+        private sealed class ExclusiveCloneAdapter : ManagedProblemBase
+        {
+            private readonly IProblem _inner;
+            public ExclusiveCloneAdapter(IProblem inner) { _inner = inner; }
+
+            public override DoubleVector fitness(DoubleVector x) => _inner.fitness(x);
+            public override PairOfDoubleVectors get_bounds() => _inner.get_bounds();
+            public override ThreadSafety get_thread_safety() => ThreadSafety.Basic;
+            public override string get_name() => _inner.get_name();
+            public override string get_extra_info() => _inner.get_extra_info();
+            public override uint get_nobj() => _inner.get_nobj();
+            public override uint get_nec() => _inner.get_nec();
+            public override uint get_nic() => _inner.get_nic();
+            public override uint get_nix() => _inner.get_nix();
+            public override bool has_gradient() => _inner.has_gradient();
+            public override DoubleVector gradient(DoubleVector x) => _inner.gradient(x);
+            public override bool has_gradient_sparsity() => _inner.has_gradient_sparsity();
+            public override SparsityPattern gradient_sparsity() => _inner.gradient_sparsity();
+            public override bool has_hessians() => _inner.has_hessians();
+            public override VectorOfVectorOfDoubles hessians(DoubleVector x) => _inner.hessians(x);
+            public override bool has_hessians_sparsity() => _inner.has_hessians_sparsity();
+            public override VectorOfSparsityPattern hessians_sparsity() => _inner.hessians_sparsity();
+            public override bool has_batch_fitness() => _inner.has_batch_fitness();
+            public override DoubleVector batch_fitness(DoubleVector dvs) => _inner.batch_fitness(dvs);
+            public override bool has_set_seed() => _inner.has_set_seed();
+            public override void set_seed(uint seed) => _inner.set_seed(seed);
+            public override void Dispose() { _inner.Dispose(); base.Dispose(); }
         }
 
         private static uint ToNativePopulationSize(ulong populationSize)

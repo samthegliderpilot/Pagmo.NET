@@ -61,13 +61,25 @@ have safe defaults and can be overridden as needed. `ManagedProblemBase` include
 
 ## Threading
 
-`thread_bfe` and `archipelago` with managed UDPs require parallel-safety opt-in:
+**Thread-safe problems** — declare `ThreadSafety.Basic` and the problem instance is shared
+across threads directly:
 
 ```csharp
 public override ThreadSafety get_thread_safety() => ThreadSafety.Basic;
 ```
 
-Managed UDPs declaring `ThreadSafety.None` are rejected on threaded execution paths.
+**Non-thread-safe problems that can be cloned** — implement `IThreadCloneableProblem` and
+override `Clone()` on `ManagedProblemBase`. Each island or OS thread receives its own
+exclusive copy, so the problem never needs to be concurrency-safe:
+
+```csharp
+public override ThreadSafety get_thread_safety() => ThreadSafety.None;
+
+public override IProblem Clone() => new MyProblem(); // fresh independent copy
+```
+
+Problems declaring `ThreadSafety.None` without a working `Clone()` are rejected on
+threaded paths (`archipelago.push_back_island`, `thread_bfe`) with a descriptive error.
 
 ## Runnable examples
 
@@ -86,6 +98,7 @@ algorithm logs after each scenario.
 | All built-in benchmark problems | `rosenbrock`, `rastrigin`, `dtlz`, `wfg`, and more |
 | Multi-island archipelago | Topology, migration, and policy wiring |
 | Custom C# problems (`IProblem` / `ManagedProblemBase`) | Full lifecycle with exception-safe callbacks |
+| Per-thread problem cloning (`IThreadCloneableProblem`) | Non-thread-safe problems can participate in threaded paths via `Clone()` |
 | Custom C# algorithms (`IAlgorithm`) | Participates in island/archipelago type-erased flows |
 | NLopt | Statically linked — available out of the box |
 | IPOPT | Statically linked — available out of the box |
