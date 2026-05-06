@@ -10,6 +10,9 @@ on:
         description: 'Version (e.g. 1.0.0-beta.3) — overrides tag when run manually'
         required: false
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
 
   # ─── Windows: build native DLL + pack NuGet (Windows runtime only) ────────
@@ -52,6 +55,10 @@ jobs:
             -Version ${{ steps.ver.outputs.VERSION }} `
             -Configuration Release `
             -SkipReleaseGates
+        shell: pwsh
+
+      - name: Run tests
+        run: dotnet test Tests/Tests.Pagmo.NET/Tests.Pagmo.NET.csproj -p:Platform=x64 --logger "console;verbosity=minimal"
         shell: pwsh
 
       - name: Upload nupkg
@@ -107,6 +114,9 @@ jobs:
       - name: Build native library
         run: pwsh scripts/build-native.ps1 -Configuration Release
 
+      - name: Run tests
+        run: dotnet test Tests/Tests.Pagmo.NET/Tests.Pagmo.NET.csproj -p:Platform=x64 --logger "console;verbosity=minimal"
+
       - name: Upload Linux native
         uses: actions/upload-artifact@v4
         with:
@@ -144,6 +154,9 @@ jobs:
 
       - name: Build arm64 slice (native)
         run: pwsh scripts/build-native.ps1 -Configuration Release
+
+      - name: Run tests (arm64)
+        run: dotnet test Tests/Tests.Pagmo.NET/Tests.Pagmo.NET.csproj -p:Platform=x64 --logger "console;verbosity=minimal"
 
       - name: Copy arm64 slice
         run: cp pagmoWrapper/build/libPagmoWrapper.dylib libPagmoWrapper-arm64.dylib
