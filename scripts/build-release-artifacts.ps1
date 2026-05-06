@@ -28,9 +28,13 @@ if (-not (Test-Path $env:DOTNET_CLI_HOME)) {
 
 $artifactRoot   = Join-Path $repoRoot "artifacts/release/$Version"
 $nugetOut       = Join-Path $artifactRoot "nuget"
-$nativeWinOut   = Join-Path $artifactRoot "native/win-x64"
-$nativeLinuxOut = Join-Path $artifactRoot "native/linux-x64"
-$nativeOut      = if ($IsLinux -eq $true -or $IsMacOS -eq $true) { $nativeLinuxOut } else { $nativeWinOut }
+$nativeWinOut      = Join-Path $artifactRoot "native/win-x64"
+$nativeLinuxOut    = Join-Path $artifactRoot "native/linux-x64"
+$arch              = if ($IsMacOS -eq $true) { (& uname -m).Trim() } else { "" }
+$nativeMacosOut    = Join-Path $artifactRoot "native/$(if ($arch -eq 'arm64') { 'osx-arm64' } else { 'osx-x64' })"
+$nativeOut         = if ($IsLinux -eq $true) { $nativeLinuxOut }
+                     elseif ($IsMacOS -eq $true) { $nativeMacosOut }
+                     else { $nativeWinOut }
 $sourceOut      = Join-Path $artifactRoot "source"
 
 if (Test-Path $artifactRoot) {
@@ -74,16 +78,28 @@ try {
     }
 
     Write-Host "==> Collecting native runtime bundle"
-    if ($IsLinux -eq $true -or $IsMacOS -eq $true) {
-        # Linux: collect libPagmoWrapper.so from the cmake build directory.
-        # All dependencies (pagmo2, Boost, TBB, NLopt, IPOPT) are statically linked via
-        # the x64-linux-static-pic vcpkg triplet — no system runtime dependencies required.
+    if ($IsLinux -eq $true) {
+        # Linux: collect libPagmoWrapper.so (pagmo2 + Boost + TBB + NLopt + IPOPT statically linked).
         $cmakeBuildDir = Join-Path $repoRoot "pagmoWrapper/build"
         Get-ChildItem -Path $cmakeBuildDir -File -Filter "libPagmoWrapper.*" | ForEach-Object {
             Copy-Item -Path $_.FullName -Destination (Join-Path $nativeOut $_.Name)
         }
-
         $nativeZipName = "Pagmo.NET-native-linux-x64-$Version.zip"
+    } elseif ($IsMacOS -eq $true) {
+        # macOS: collect libPagmoWrapper.dylib (pagmo2 + Boost + TBB + NLopt statically linked).
+        # arm64 and x64 slices are combined into a universal binary by the release workflow.
+        $cmakeBuildDir = Join-Path $repoRoot "pagmoWrapper/build"
+        $dylib = Join-Path $cmakeBuildDir "libPagmoWrapper.dylib"
+        if (-not (Test-Path $dylib)) {
+            throw "macOS dylib not found at '$dylib'. Ensure build-native.ps1 completed successfully."
+        }
+        Copy-Item -Path $dylib -Destination (Join-Path $nativeOut "libPagmoWrapper.dylib")
+
+        # Ad-hoc code signing — sufficient for open-source distribution without notarization.
+        & codesign --sign - (Join-Path $nativeOut "libPagmoWrapper.dylib")
+
+        $rid = if ($arch -eq "arm64") { "osx-arm64" } else { "osx-x64" }
+        $nativeZipName = "Pagmo.NET-native-$rid-$Version.zip"
     } else {
         # Windows: cmake static build (x64-windows-static-md) produces a single self-contained
         # PagmoWrapper.dll with pagmo2, Boost, TBB, NLopt, and IPOPT statically linked.

@@ -6,14 +6,14 @@
 providing high-quality metaheuristic and gradient-based optimization routines with multi-island
 parallel evolution support.
 
-The wrapper is built with [SWIG 4.4](https://www.swig.org/) and supports Windows x64 and Linux x64.
+The wrapper is built with [SWIG 4.4](https://www.swig.org/) and supports Windows x64, Linux x64, and macOS (arm64 + x86_64 universal binary).
 
 ```
 dotnet add package Pagmo.NET --version 1.0.0-beta.2
 ```
 
-The NuGet package is self-contained — native runtime libraries for Windows x64 and Linux x64
-are bundled in `runtimes/`. No additional installation required.
+The NuGet package is self-contained — native runtime libraries for Windows x64, Linux x64, and
+macOS (universal binary) are bundled in `runtimes/`. No additional installation required.
 
 Source archives and individual native bundles are available at
 `https://github.com/samthegliderpilot/Pagmo.NET/releases`.
@@ -78,6 +78,33 @@ dotnet run --project Examples/Examples.Pagmo.NET/Examples.Pagmo.NET.csproj -- al
 > **Note on .NET SDK:** The library targets `net8.0`. Tests and examples target `net10.0`
 > because the .NET 8 VsTest runner on Linux only discovers ~198 of 593 tests due to a known
 > discovery issue. Consumers can reference the package from any .NET 8+ project.
+
+### macOS (arm64 + x86_64)
+
+The native library statically links pagmo2, Boost.Serialization, TBB, and NLopt via vcpkg
+(IPOPT support is planned). The release workflow combines arm64 and x86_64 slices into a
+universal binary with `lipo`.
+
+**One-time setup:**
+
+```bash
+brew install cmake autoconf autoconf-archive automake libtool swig
+brew install powershell/tap/powershell
+brew install --cask dotnet-sdk
+
+# vcpkg
+git clone https://github.com/microsoft/vcpkg ~/vcpkg
+~/vcpkg/bootstrap-vcpkg.sh
+export VCPKG_ROOT=~/vcpkg   # add to ~/.zshrc or ~/.bash_profile
+```
+
+**Build and test:**
+
+```bash
+pwsh scripts/build-native.ps1 -Configuration Debug
+dotnet test Tests/Tests.Pagmo.NET/Tests.Pagmo.NET.csproj -p:Platform=x64
+dotnet run --project Examples/Examples.Pagmo.NET/Examples.Pagmo.NET.csproj -- all
+```
 
 ---
 

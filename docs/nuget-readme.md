@@ -6,8 +6,9 @@
 providing high-quality metaheuristic and gradient-based optimization algorithms with
 multi-island parallel evolution support.
 
-Supported platforms: **Windows x64** and **Linux x64** — native runtime libraries are
-bundled in the package. No additional installation required.
+Supported platforms: **Windows x64**, **Linux x64**, and **macOS** (arm64 + x86_64
+universal binary) — native runtime libraries are bundled in the package. No additional
+installation required.
 
 ## Installation
 
@@ -103,7 +104,7 @@ algorithm logs after each scenario.
 | NLopt | Statically linked — available out of the box |
 | IPOPT | Statically linked — available out of the box |
 | SNOPT7 | Not included (proprietary license; build from source with your own license) |
-| macOS | Planned for v2 |
+| macOS (arm64 + x86_64) | Supported — universal binary; NLopt included, IPOPT coming |
 | x86 / ARM | Not supported in v1 |
 | .NET Framework | Not supported |
 

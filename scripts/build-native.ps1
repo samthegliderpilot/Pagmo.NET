@@ -18,15 +18,15 @@ try {
     $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
     $wrapperDir = Join-Path $repoRoot "pagmoWrapper"
 
-    if ($IsLinux -or $IsMacOS) {
-        # CMake + vcpkg path for Linux/macOS.
+    if ($IsLinux) {
+        # CMake + vcpkg path for Linux.
         # Uses the x64-linux-static-pic triplet to build pagmo2 and its dependencies
         # (Boost.Serialization, TBB, NLopt, IPOPT) as static PIC libraries, so
         # libPagmoWrapper.so has no external runtime dependencies beyond the standard
         # C++ runtime.
 
         if (-not $env:VCPKG_ROOT) {
-            throw "VCPKG_ROOT must be set for Linux/macOS builds. Clone vcpkg (https://github.com/microsoft/vcpkg) and set VCPKG_ROOT."
+            throw "VCPKG_ROOT must be set for Linux builds. Clone vcpkg (https://github.com/microsoft/vcpkg) and set VCPKG_ROOT."
         }
         $vcpkgExe       = Join-Path $env:VCPKG_ROOT "vcpkg"
         $vcpkgToolchain = Join-Path $env:VCPKG_ROOT "scripts/buildsystems/vcpkg.cmake"
@@ -66,6 +66,55 @@ try {
             "-DVCPKG_OVERLAY_TRIPLETS=$tripletOverlay" `
             "-DPAGMONET_WITH_NLOPT=ON" `
             "-DPAGMONET_WITH_IPOPT=ON"
+        if ($LASTEXITCODE -ne 0) { throw "cmake configure failed ($LASTEXITCODE)." }
+
+        & cmake --build $buildDir --config $Configuration
+        if ($LASTEXITCODE -ne 0) { throw "cmake build failed ($LASTEXITCODE)." }
+
+    } elseif ($IsMacOS) {
+        # CMake + vcpkg path for macOS (arm64 and x86_64).
+        # NLopt is statically linked; IPOPT is deferred until the vcpkg macOS port
+        # resolves the autotools LAPACK detection friction.
+        # The dylib output goes to pagmoWrapper/build regardless of architecture —
+        # arm64 and x64 slices are combined into a universal binary by the release workflow.
+
+        if (-not $env:VCPKG_ROOT) {
+            throw "VCPKG_ROOT must be set for macOS builds. Clone vcpkg (https://github.com/microsoft/vcpkg) and set VCPKG_ROOT."
+        }
+        $vcpkgExe       = Join-Path $env:VCPKG_ROOT "vcpkg"
+        $vcpkgToolchain = Join-Path $env:VCPKG_ROOT "scripts/buildsystems/vcpkg.cmake"
+        $tripletOverlay = (Resolve-Path (Join-Path $repoRoot "triplets")).Path
+        $portsOverlay   = (Resolve-Path (Join-Path $repoRoot "ports")).Path
+
+        if (-not (Test-Path $vcpkgExe)) {
+            throw "vcpkg executable not found at '$vcpkgExe'. Run bootstrap-vcpkg.sh first."
+        }
+
+        $arch    = (& uname -m).Trim()
+        $triplet = if ($arch -eq "arm64") { "arm64-osx-static-pic" } else { "x64-osx-static-pic" }
+
+        Write-Host "==> vcpkg install pagmo2[nlopt]:$triplet"
+        & $vcpkgExe install "pagmo2[nlopt]:$triplet" `
+            "--overlay-triplets=$tripletOverlay" `
+            "--overlay-ports=$portsOverlay" `
+            "--recurse"
+        if ($LASTEXITCODE -ne 0) { throw "vcpkg install failed ($LASTEXITCODE)." }
+
+        $buildDir  = Join-Path $wrapperDir "build"
+        $cmakeCache = Join-Path $buildDir "CMakeCache.txt"
+        if (Test-Path $cmakeCache) {
+            Write-Host "==> Clearing stale cmake cache"
+            Remove-Item -Force $cmakeCache
+        }
+
+        & cmake `
+            "-B$buildDir" `
+            "-S$wrapperDir" `
+            "-DCMAKE_BUILD_TYPE=$Configuration" `
+            "-DCMAKE_TOOLCHAIN_FILE=$vcpkgToolchain" `
+            "-DVCPKG_TARGET_TRIPLET=$triplet" `
+            "-DVCPKG_OVERLAY_TRIPLETS=$tripletOverlay" `
+            "-DPAGMONET_WITH_NLOPT=ON"
         if ($LASTEXITCODE -ne 0) { throw "cmake configure failed ($LASTEXITCODE)." }
 
         & cmake --build $buildDir --config $Configuration

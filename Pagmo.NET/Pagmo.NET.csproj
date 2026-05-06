@@ -75,6 +75,16 @@
           PackagePath="runtimes/linux-x64/native/libPagmoWrapper.so" />
   </ItemGroup>
 
+  <!-- macOS: libPagmoWrapper.dylib (pagmo2 + Boost + TBB + NLopt statically linked via
+       arm64-osx-static-pic or x64-osx-static-pic vcpkg triplet; no system runtime deps).
+       The NuGet release package uses a universal binary injected by the release workflow
+       at runtimes/osx/native/; this item covers local dev builds. -->
+  <ItemGroup Condition="'$(OS)' != 'Windows_NT' And Exists('$(PagmoWrapperCmakeBuildDir)/libPagmoWrapper.dylib')">
+    <None Include="$(PagmoWrapperCmakeBuildDir)/libPagmoWrapper.dylib"
+          Pack="true"
+          PackagePath="runtimes/osx/native/libPagmoWrapper.dylib" />
+  </ItemGroup>
+
   <ItemGroup>
     <Folder Include="pagmoExtensions\BatchEvaluators\" />
     <Folder Include="pagmoExtensions\Topologies\" />

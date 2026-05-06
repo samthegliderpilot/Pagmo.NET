@@ -59,11 +59,19 @@ else()
     target_compile_options(PagmoWrapper PRIVATE -UPAGMO_WITH_NLOPT -UPAGMO_WITH_IPOPT)
 endif()
 
-# On Linux, set the SONAME so consumers can find the library by its short name.
-if(NOT WIN32)
+# Platform-specific library properties.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Set SONAME so consumers can find the library by its short name.
     set_target_properties(PagmoWrapper PROPERTIES
         VERSION   ${PROJECT_VERSION}
         SOVERSION 1
+    )
+elseif(APPLE)
+    # Use @loader_path so the dylib resolves sibling libraries at runtime
+    # regardless of install location (NuGet runtimes/ layout).
+    set_target_properties(PagmoWrapper PROPERTIES
+        BUILD_WITH_INSTALL_RPATH ON
+        INSTALL_RPATH "@loader_path"
     )
 endif()
 
