@@ -127,8 +127,6 @@ jobs:
         with:
           dotnet-version: '10.x'
 
-      - name: Install PowerShell
-        run: brew install --cask powershell
 
       - name: Bootstrap vcpkg
         run: |
@@ -166,8 +164,6 @@ jobs:
         with:
           dotnet-version: '10.x'
 
-      - name: Install PowerShell
-        run: brew install --cask powershell
 
       - name: Bootstrap vcpkg
         run: |

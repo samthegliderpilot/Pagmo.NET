@@ -293,34 +293,25 @@ Last updated: 2026-04-08
   - [x] Added full-surface generated-doc enforcement gate (`scripts/check-generated-api-docs.ps1`) to verify all public types and all public/protected members are documented in generated API reference output.
   - [x] Locked beta versioning baseline to `1.0.0-beta.1` in packaging metadata.
   - [x] Added release artifact production script (`scripts/build-release-artifacts.ps1`) to emit NuGet packages, release-only native runtime bundle, source archive, and `SHA256SUMS.txt` under `artifacts/release/<version>/`.
-- [ ] Define and lock v1.0 artifact set:
-  - `Pagmo.NET` NuGet package (`.nupkg` + `.snupkg`) for managed consumers.
-  - Windows x64 native runtime bundle (`pagmoWrapper.dll` + dependent native DLLs) versioned and checksummed.
-  - Source archive/tag snapshot for reproducible builds.
-- [ ] Define and lock distribution channels:
-  - GitHub Releases as canonical distribution for tagged binaries + release notes.
-  - NuGet.org as canonical managed package distribution.
-  - Repository docs/README as the single source of install instructions linking to those channels.
-- [ ] Add release notes template and v1.0 notes content:
-  - highlights (managed problem/algorithm extensibility, island/archipelago flows, optional IPOPT/NLopt availability model),
-  - breaking/behavior notes,
-  - supported environment matrix (Windows-first, x64, .NET 10).
-- [ ] Publish artifacts and release notes.
+- [x] Define and lock v1.0 artifact set: NuGet `.nupkg` + `.snupkg`, native runtime bundles, source archive, `SHA256SUMS.txt`.
+- [x] Define and lock distribution channels: GitHub Releases for tagged binaries, NuGet.org for managed package, README as install instructions source.
+- [x] Add release notes content: RELEASE_NOTES.md with highlights, breaking/behavior notes, supported environment matrix.
+- [x] Publish artifacts and release notes — v1.0.0-beta.1 and v1.0.0-beta.2 published to NuGet.org.
 
 9. **Sprint 7 (v1.x): Linux/CMake** ✅ Completed before v1.0 release.
 - [x] Cross-platform build — Linux x64 supported. Static vcpkg build (`x64-linux-static-pic` triplet): pagmo2 + Boost + TBB + NLopt + IPOPT statically linked into `libPagmoWrapper.so`. No system runtime dependencies. 593/593 tests pass on Ubuntu 24.04.
-- [ ] Evaluate optional managed thread-clone strategy for non-thread-safe managed problems (for example `IThreadCloneableProblem` with per-thread clone context) and integrate only if it fits pagmo execution semantics cleanly.
+- [x] `IThreadCloneableProblem` implemented: non-thread-safe managed problems can participate in threaded paths (`archipelago`, `thread_bfe`) by providing `Clone()`. Per-island cloning via `ExclusiveCloneAdapter`; per-thread cloning via `managed_thread_bfe` (`Parallel.For` + `ThreadLocal<IProblem>`). Stress test included.
 
-10. **Sprint 8 (v2.0): macOS Support**
-- [ ] **arm64 (Apple Silicon):** custom vcpkg triplet `arm64-osx-static-pic.cmake` (static + PIC, `CMAKE_SYSTEM_NAME=Darwin`). Build produces `libPagmoWrapper.dylib`. NuGet RID `osx-arm64`.
-- [ ] **x86_64 (Intel Mac):** custom vcpkg triplet `x64-osx-static-pic.cmake`. NuGet RID `osx-x64`.
-- [ ] **Universal binary (preferred):** combine arm64 + x86_64 slices with `lipo -create` in CI; ship one `libPagmoWrapper.dylib` covering both architectures under a single `osx` NuGet RID entry.
-- [ ] **CMakeLists.txt additions:** `MACOSX_DEPLOYMENT_TARGET` (11.0 for arm64, 10.15 for x86_64); RPATH uses `@loader_path` instead of Linux's `$ORIGIN`.
-- [ ] **build-native.ps1:** macOS branch detecting architecture via `uname -m`; selects appropriate triplet; handles universal binary `lipo` step if both slices are present.
-- [ ] **IPOPT on macOS:** same autotools + LAPACK friction as Windows static build. Ship NLopt only on first attempt; revisit IPOPT if the vcpkg macOS port resolves the issue.
-- [ ] **Code signing:** ad-hoc signing (`codesign --sign -`) sufficient for open-source distribution; Developer ID certificate needed for notarization if distributing outside the Mac App Store.
-- [ ] **NuGet packaging:** add `runtimes/osx/native/` item groups to `Pagmo.NET.csproj`; update `build-release-artifacts.ps1` with macOS artifact collection.
-- [ ] **CI:** add `macos-latest` (arm64) and `macos-13` (x86_64) GitHub Actions jobs to the release workflow; `lipo` merge step in the publish job.
+10. **Sprint 8 (v2.0): macOS Support** ✅ Completed.
+- [x] **arm64 (Apple Silicon):** `triplets/arm64-osx-static-pic.cmake` — static linkage, `CMAKE_SYSTEM_NAME=Darwin`, deployment target 11.0.
+- [x] **x86_64 (Intel Mac):** `triplets/x64-osx-static-pic.cmake` — deployment target 10.15.
+- [x] **Universal binary:** arm64 + x86_64 slices combined with `lipo -create` in CI `merge-macos` job; shipped as `runtimes/osx/native/libPagmoWrapper.dylib`.
+- [x] **CMakeLists.txt:** `@loader_path` RPATH for macOS; SONAME restricted to Linux only.
+- [x] **build-native.ps1:** macOS branch detecting architecture via `uname -m`, selecting appropriate triplet, building with NLopt.
+- [x] **IPOPT on macOS:** deferred — NLopt ships; IPOPT revisit pending vcpkg macOS port improvements.
+- [x] **Code signing:** ad-hoc `codesign --sign -` in `build-release-artifacts.ps1`.
+- [x] **NuGet packaging:** `runtimes/osx/native/` ItemGroup in `Pagmo.NET.csproj`; `build-release-artifacts.ps1` updated with macOS artifact collection.
+- [x] **CI:** `build-macos-arm64` (`macos-latest`) + `build-macos-x64` (`macos-13`) + `merge-macos` (lipo) jobs in release workflow.
 
 10. **Sprint 9 (v2.x): Additional Language Bindings**
 
