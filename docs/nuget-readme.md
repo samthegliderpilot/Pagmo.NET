@@ -13,7 +13,7 @@ installation required.
 ## Installation
 
 ```
-dotnet add package Pagmo.NET --version 1.0.0-beta.2
+dotnet add package Pagmo.NET --prerelease
 ```
 
 ## Quickstart

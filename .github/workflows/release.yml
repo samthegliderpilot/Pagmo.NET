@@ -283,7 +283,5 @@ jobs:
         run: |
           dotnet nuget push "nuget/Pagmo.NET.${{ steps.ver.outputs.VERSION }}.nupkg" \
             --api-key ${{ secrets.NUGET_API_KEY }} \
-            --source https://api.nuget.org/v3/index.json
-          dotnet nuget push "nuget/Pagmo.NET.${{ steps.ver.outputs.VERSION }}.snupkg" \
-            --api-key ${{ secrets.NUGET_API_KEY }} \
-            --source https://api.nuget.org/v3/index.json
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
